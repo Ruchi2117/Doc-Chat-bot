@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./backend/vectorstore:/app/vectorstore
+    env_file:
+      - backend/.env
+    environment:
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - EMBEDDING_DEVICE=cpu
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file:
+      - frontend/.env
+    depends_on:
+      - backend 
