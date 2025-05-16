@@ -2,8 +2,6 @@
 
 An elegant, document-powered chatbot that combines powerful RAG (Retrieval-Augmented Generation) pipelines with a sleek modern UI.
 
-![Chat Interface](backend/documents/chat-interface.png)
-![Document Upload](backend/documents/document-upload.png)
 
 ---
 
@@ -39,10 +37,8 @@ An elegant, document-powered chatbot that combines powerful RAG (Retrieval-Augme
 ## 📸 Screenshots
 
 ### 🧠 Chat in Action  
-![Chat Example](backend/documents/chat-example.png)
+![Chat Example](backend/documents/chat_example.png)
 
-### 📁 Document Management  
-![Document Management](backend/documents/document-management.png)
 
 ---
 
