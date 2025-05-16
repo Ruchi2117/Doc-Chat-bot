@@ -1,0 +1,26 @@
+The primary colors are red, blue, and yellow. These are called primary colors because they cannot be created by mixing other colors together.
+
+Secondary colors are created by mixing two primary colors:
+- Mixing red and blue creates purple
+- Mixing blue and yellow creates green
+- Mixing red and yellow creates orange
+
+Tertiary colors and other derived colors:
+- Pink is created by mixing red and white
+- Gray is created by mixing black and white
+- Brown is created by mixing complementary colors or by mixing all three primary colors
+- Peach is created by mixing red, yellow, and white
+
+Complementary colors are pairs of colors that are opposite each other on the color wheel:
+- Red and green are complementary colors
+- Blue and orange are complementary colors
+- Yellow and purple are complementary colors
+
+Warm colors include red, orange, and yellow. These colors are associated with sunlight, fire, and heat.
+Cool colors include blue, green, and purple. These colors are associated with water, ice, and shade.
+
+Color values and properties:
+- White is the presence of all colors of light combined
+- Black is the absence of all colors or light
+- Pink is a light tint of red, made lighter by adding white
+- Pastels are any color mixed with white to create a softer, lighter version 
