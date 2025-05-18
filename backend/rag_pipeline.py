@@ -145,8 +145,23 @@ class RAGPipeline:
             k=k * 3
         )
         
-        candidates: List[SearchResult] = []
+        # Group documents by source
+        source_groups = {}
         for doc_obj, dist in raw_results:
+            source = doc_obj.metadata.get('source', '')
+            if source not in source_groups:
+                source_groups[source] = []
+            source_groups[source].append((doc_obj, dist))
+        
+        # Select best chunk from each source
+        candidates: List[SearchResult] = []
+        for source, docs in source_groups.items():
+            if not docs:
+                continue
+            
+            # Get the best chunk from this source
+            doc_obj, dist = max(docs, key=lambda x: x[1])
+            
             # Calculate scores asynchronously
             keyword_score = await asyncio.to_thread(
                 self.calculate_keyword_score,
@@ -164,15 +179,17 @@ class RAGPipeline:
                 )
             )
 
+        # Select top k results from unique sources
         top = nlargest(k, candidates, key=lambda x: x.hybrid_score)
-        logger.info(f"Selected top {len(top)} docs for query '{query}'")
+        logger.info(f"Selected top {len(top)} docs from unique sources for query '{query}'")
         return top
 
     async def answer_question_stream(
         self,
         query: str,
         k: int = 3,
-        use_cache: bool = True
+        use_cache: bool = True,
+        history: Optional[List[Dict[str, str]]] = None
     ) -> AsyncGenerator[Tuple[str, List[Dict], List[float]], None]:
         """
         Stream responses from the RAG pipeline with caching support.
@@ -196,13 +213,25 @@ class RAGPipeline:
         # Assemble context
         context = "\n\n".join(r.content for r in results)
         
+        # Prepare the full query with history if available
+        full_query = query
+        if history:
+            formatted_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
+            full_query = f"{formatted_history}\nuser: {query}"
+
         # Collect full response for caching
         full_response = []
-        metadata = [r.metadata for r in results]
+        # Group metadata by source to avoid duplicates
+        source_to_metadata = {}
+        for r in results:
+            source = r.metadata.get('source', '')
+            if source not in source_to_metadata:
+                source_to_metadata[source] = r.metadata
+        metadata = list(source_to_metadata.values())
         scores = [r.hybrid_score for r in results]
         
         # Stream the response
-        async for chunk in self.llama_helper.generate_response(context, query):
+        async for chunk in self.llama_helper.generate_response(context, full_query):
             full_response.append(chunk)
             yield (chunk, metadata, scores)
         

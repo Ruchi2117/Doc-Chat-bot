@@ -69,6 +69,13 @@ function App() {
     setInput('');
     setIsLoading(true);
 
+    // Prepare conversation history
+    // The current messages state (prev inside setMessages) will include the latest userMessage
+    const currentMessages = [...messages, userMessage]; // Add current user message to history context
+    const historyToSend = currentMessages
+      .slice(-6) // Get last 6 messages (3 turns)
+      .map(({ role, content }) => ({ role, content })); // Keep only role and content
+
     try {
       // Create a new message placeholder for the assistant's response
       const assistantMessage = {
@@ -81,8 +88,9 @@ function App() {
       setMessages(prev => [...prev, assistantMessage]);
 
       const response = await api.post('/ask', {
-        question: input,
-        use_cache: useCaching
+        question: userMessage.content, // Send the content of the userMessage object
+        use_cache: useCaching,
+        history: historyToSend // Add the conversation history
       }, {
         responseType: 'text',
         headers: {
@@ -190,19 +198,14 @@ function App() {
   };
   
   return (
-    <div className="app-container">
-      {/* Decorative floating hearts */}
-      <div className="floating-heart" style={{ content: "🎓" }}>🎓</div>
-      <div className="floating-heart" style={{ content: "📄" }}>📄</div>
-      <div className="floating-heart" style={{ content: "📓" }}>📓</div>
-
-      <div className="chat-header">
-        <h1> DOC Chatbot </h1>
+    <div className="app theme-pink">
+      <header className="chat-header">
+        <h1>DOC Chatbot</h1>
         <div className="connection-status">
           <span className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`} />
           {isConnected ? '🌟 Connected' : '💫 Disconnected'}
         </div>
-      </div>
+      </header>
 
       <div className="settings-panel">
         <div className="upload-section">
@@ -233,7 +236,7 @@ function App() {
             checked={useCaching}
             onChange={(e) => setUseCaching(e.target.checked)}
           />
-          🔭 Enable Response Caching
+          {'🔭 Enable Response Caching'} 
         </label>
       </div>
 
@@ -246,19 +249,19 @@ function App() {
             >
               <div className="message-content">
                 {message.content}
-                {message.isStreaming && <span className="cursor">✨</span>}
+                {message.isStreaming && <span className="cursor">{'✨'}</span>}
               </div>
               {message.role === 'assistant' && message.metadata && message.metadata.length > 0 && (
                 <div className="sources">
                   <details>
-                    <summary>🔍 Sources ({message.metadata.length})</summary>
+                    <summary>{'🔍 Sources'} ({message.metadata.length})</summary>
                     <ul>
                       {message.metadata.map((source, idx) => (
                         <li key={idx}>
-                          📄 {source.source}
+                          {'📄'} {source.source}
                           {message.scores && message.scores[idx] && (
                             <span className="score">
-                              ⭐ {(message.scores[idx] * 100).toFixed(1)}% match
+                              {'⭐'} {(message.scores[idx] * 100).toFixed(1)}% match
                             </span>
                           )}
                         </li>
@@ -269,6 +272,11 @@ function App() {
               )}
             </div>
           ))}
+          {isLoading && (
+            <div className="loading">
+              <CircularProgress size={24} />
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -277,7 +285,7 @@ function App() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="🔭 Ask me anything..."
+            placeholder={"🔭 Ask me anything..."}
             disabled={!isConnected || isLoading}
           />
           <button type="submit" disabled={!isConnected || isLoading}>

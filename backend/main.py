@@ -11,6 +11,7 @@ import json
 import asyncio
 import shutil
 from pathlib import Path
+from typing import List, Dict, Optional
 from prepare_data import DocumentProcessor
 
 # Setup logging
@@ -22,7 +23,10 @@ env_path = os.getenv("DOTENV_PATH", None)
 load_dotenv(dotenv_path=env_path)
 
 # Initialize FastAPI app
-app = FastAPI(title="RAG Chatbot API")
+app = FastAPI(
+    title="RAG Chatbot API",
+    root_path="/api"
+)
 
 # Configure CORS origins from environment or default to all
 origins = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -43,6 +47,7 @@ app.add_middleware(
 class AskRequest(BaseModel):
     question: str
     use_cache: bool = True
+    history: Optional[List[Dict[str, str]]] = None
 
 # Initialize RAG pipeline placeholder
 rag_pipeline = None
@@ -76,9 +81,9 @@ async def upload_file(file: UploadFile = File(...)):
         if document_processor is None:
             document_processor = DocumentProcessor()
             
-        # Process documents and update vector store
-        documents = await run_in_threadpool(document_processor.process_documents)
-        await run_in_threadpool(document_processor.create_vectorstore, documents)
+        # Process only the new document and update vector store
+        documents = await run_in_threadpool(document_processor.process_document, file_path)
+        await run_in_threadpool(document_processor.update_vectorstore, documents)
 
         return JSONResponse(
             content={
@@ -113,10 +118,10 @@ async def startup_event():
         logger.exception("Failed to initialize RAG pipeline")
         raise
 
-async def stream_response(question: str, use_cache: bool = True):
+async def stream_response(question: str, use_cache: bool = True, history: Optional[List[Dict[str, str]]] = None):
     """Stream response chunks as Server-Sent Events."""
     try:
-        async for chunk, metadata, scores in rag_pipeline.answer_question_stream(question, use_cache=use_cache):
+        async for chunk, metadata, scores in rag_pipeline.answer_question_stream(question, use_cache=use_cache, history=history):
             # Prepare SSE message
             data = {
                 "chunk": chunk,
@@ -140,7 +145,7 @@ async def ask_question_get(question: str, use_cache: bool = True):
         raise HTTPException(status_code=400, detail="`question` field is required")
 
     return StreamingResponse(
-        stream_response(question.strip(), use_cache=use_cache),
+        stream_response(question.strip(), use_cache=use_cache, history=None),
         media_type="text/event-stream"
     )
 
@@ -152,7 +157,7 @@ async def ask_question_post(payload: AskRequest):
         raise HTTPException(status_code=400, detail="`question` field is required")
 
     return StreamingResponse(
-        stream_response(question, use_cache=payload.use_cache),
+        stream_response(question, use_cache=payload.use_cache, history=payload.history),
         media_type="text/event-stream"
     )
 

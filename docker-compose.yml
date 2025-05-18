@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
     ports:
       - "8000:8000"
     volumes:
@@ -19,11 +21,9 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "5173:80" # Nginx serves on port 80 in the container
+    # Volumes removed to serve static content built by frontend/Dockerfile
     env_file:
       - frontend/.env
     depends_on:
-      - backend 
+      - backend

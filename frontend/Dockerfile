@@ -1,23 +1,31 @@
-# Use Node.js 16 as base image
-FROM node:16-alpine
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package.json and package-lock.json (or yarn.lock)
 COPY frontend/package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy the rest of the frontend application
+# Copy the rest of the application source code
 COPY frontend/ .
 
-# Build the application
+# Build the application for production
 RUN npm run build
 
-# Expose port
-EXPOSE 5173
+# Stage 2: Serve the application with Nginx
+FROM nginx:alpine
 
-# Start the application
-CMD ["npm", "run", "dev", "--", "--host"] 
+# Copy build output from builder stage to Nginx's web root
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy a custom Nginx configuration if needed (optional)
+# COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 80 for Nginx
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]

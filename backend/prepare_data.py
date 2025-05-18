@@ -52,14 +52,13 @@ class DocumentProcessor:
             ".md": UnstructuredMarkdownLoader
         }
     
-    def process_documents(self) -> List[Dict]:
-        """Process all supported documents in the data directory."""
+    def process_document(self, file_path: Path) -> List[Dict]:
+        """Process a single document."""
         documents = []
         
-        # Process each file in the data directory
-        for file_path in self.data_dir.glob("**/*"):
+        if file_path and file_path.exists():
             if file_path.suffix.lower() in self.loaders:
-                logger.info(f"Processing {file_path}")
+                logger.info(f"Processing specific file: {file_path}")
                 try:
                     # Load and split the document
                     loader = self.loaders[file_path.suffix.lower()](str(file_path))
@@ -69,10 +68,46 @@ class DocumentProcessor:
                     logger.info(f"Added {len(chunks)} chunks from {file_path.name}")
                 except Exception as e:
                     logger.error(f"Error processing {file_path}: {str(e)}")
+                    raise
         
         return documents
-    
-    def create_vectorstore(self, documents: List[Dict]):
+
+    def process_documents(self) -> List[Dict]:
+        """Process all documents in the data directory."""
+        documents = []
+        
+        for file_path in self.data_dir.glob("**/*"):
+            if file_path.is_file():
+                documents.extend(self.process_document(file_path))
+        
+        return documents
+
+    def update_vectorstore(self, documents: List[Dict]):
+        """Update the existing vector store with new documents."""
+        if not documents:
+            logger.warning("No documents to process!")
+            return
+        
+        try:
+            # Load existing vector store
+            vectorstore = Chroma(
+                persist_directory=str(self.vectorstore_path),
+                embedding_function=self.embedding_function
+            )
+            
+            # Add new documents
+            vectorstore.add_documents(documents)
+            vectorstore.persist()
+            
+            logger.info(f"Successfully updated vector store at {self.vectorstore_path}")
+            logger.info(f"Processed {len(documents)} new chunks")
+            logger.info("Vector store is ready for querying!")
+            
+        except Exception as e:
+            logger.error(f"Error updating vector store: {str(e)}")
+            raise
+
+    def create_vectorstore_from_documents(self, documents: List[Dict]):
         """Create or update the vector store with the processed documents."""
         if not documents:
             logger.warning("No documents to process!")

@@ -1,48 +1,43 @@
 # 📄 DOC Chatbot
 
-An elegant, document-powered chatbot that combines powerful RAG (Retrieval-Augmented Generation) pipelines with a sleek modern UI.
-
-![Chat Interface](backend/documents/chat-interface.png)
-![Document Upload](backend/documents/document-upload.png)
+Meet **Doc Chatbot**: Your intelligent conversational partner, engineered to revolutionize how you interact with your documents. Say goodbye to tedious keyword searches; Doc Chatbot leverages a state-of-the-art **Retrieval-Augmented Generation (RAG)** pipeline to provide nuanced, context-aware answers drawn directly from your PDFs, TXT, and DOCX files. All of this power is wrapped in a beautifully designed, intuitive user interface for a seamless and productive experience.
 
 ---
 
 ## 🚀 Features
 
-### 🎓 Document Upload & Processing
-- Supports PDF, TXT, DOCX files
-- Intelligent chunking with Langchain
-- Chroma vector embedding storage
+### 🎓 Effortless Document Ingestion & Advanced Processing
+- **Versatile File Support**: Simply upload your PDFs, TXT, or DOCX files.
+- **Intelligent Content Structuring**: Our sophisticated backend, powered by Langchain, intelligently processes and chunks your documents, meticulously preparing them for deep contextual understanding.
+- **High-Performance Vector Storage**: Embeddings are efficiently generated and managed in a Chroma vector database, ensuring lightning-fast and accurate information retrieval.
 
-### 💬 Conversational Interface
-- Interactive real-time chat
-- Source-aware answers
-- Typing indicators & message history
+### 💬 Dynamic & Engaging Conversational Interface
+- **Fluid Real-Time Interaction**: Experience a truly interactive chat with instant responses.
+- **Contextual Memory**: Doc Chatbot remembers the last few turns of your conversation (up to 6 messages), allowing for more natural follow-up questions and coherent dialogue.
+- **Source-Aware & Transparent**: Get answers you can trust. Doc Chatbot not only provides information but also cites the specific sources within your documents, offering complete transparency.
+- **Polished User Experience**: Enjoy a smooth interface with thoughtful details like typing indicators and a clear message history.
 
-### 🔍 Smart Search (RAG)
-- Semantic + keyword hybrid retrieval
-- Source attribution for transparency
-- Answer generation using GROQ LLMs
+### 🔍 Next-Generation RAG Intelligence
+- **Hybrid Search Power**: Our advanced RAG pipeline employs a powerful hybrid search strategy, combining semantic understanding with keyword precision to pinpoint the most relevant information within your documents.
+- **Cutting-Edge Answer Generation**: Answers are synthesized by high-performance GROQ LLMs, ensuring accuracy, coherence, and natural language delivery.
 
-### ⚡ Performance Optimized
-- Vectorized search for speed
-- Chunk caching & batch embedding
-- Device-aware model loading (CPU/GPU)
+### ⚡ Performance-Optimized Architecture
+- **Rapid Vectorized Search**: Experience near-instantaneous search results thanks to highly optimized vectorized query processing.
+- **Efficient Processing**: Benefit from intelligent chunk caching and batch embedding strategies that maximize speed and resource utilization.
+- **Adaptive Model Loading**: The system is designed to be resource-aware, adapting model loading for optimal performance on both CPU and GPU setups.
 
-### 🌐 Elegant Frontend
-- React + Vite with modern styling
-- Responsive layout
-- Smooth UI animations
+### 🌐 Sleek & Modern User Experience
+- **Visually Stunning Frontend**: Interact with a cutting-edge interface built with React and Vite, featuring contemporary styling that's both beautiful and functional.
+- **Fully Responsive Design**: Enjoy a flawless experience across all devices, from desktops to tablets and smartphones.
+- **Smooth & Intuitive Interactions**: Navigate with ease thanks to smooth UI animations and an intuitive layout that makes interacting with your documents a pleasure.
 
 ---
 
 ## 📸 Screenshots
 
 ### 🧠 Chat in Action  
-![Chat Example](backend/documents/chat-example.png)
-
-### 📁 Document Management  
-![Document Management](backend/documents/document-management.png)
+![Chat Example](backend/documents/chat_example.png)
+![Chat Example](backend/documents/sc2.png)
 
 ---
 
@@ -101,6 +96,11 @@ cd backend
 python -m venv venv
 venv\Scripts\activate  # On Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
+```
+
+**Note:** Some dependencies in `requirements.txt` (e.g., `onnxruntime`) might have complex build requirements. If you encounter issues, using the Docker setup is highly recommended for a smoother experience.
+
+```bash
 uvicorn main:app --reload
 ```
 
@@ -172,7 +172,6 @@ VITE_API_URL=http://localhost:8000
 5. Submit a pull request 🚀
 
 ---
-
 
 ## 🙏 Acknowledgments
 

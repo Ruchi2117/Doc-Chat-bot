@@ -37,6 +37,6 @@ ENV/
 *.swo
 
 # Project specific
-vectorstore/
-documents/
+#vectorstore/
+#documents/
 *.gguf 
