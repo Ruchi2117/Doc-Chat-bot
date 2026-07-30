@@ -1,25 +1,86 @@
-# Doc Chatbot
+# 📄 DOC Chatbot
 
-Doc Chatbot is a full-stack Retrieval-Augmented Generation (RAG) app for chatting with uploaded documents. The frontend is built with React and Vite, and the backend is a FastAPI service that indexes documents with Chroma, sentence-transformer embeddings, and Groq-hosted LLM responses.
+Meet **DOC Chatbot**: an intelligent document companion that lets you upload files and ask natural-language questions about them. Instead of manually searching through pages of text, DOC Chatbot uses a **Retrieval-Augmented Generation (RAG)** pipeline to find the most relevant context and generate helpful, source-aware answers.
 
-## Features
+Built with a modern React interface, a FastAPI backend, Chroma vector search, sentence-transformer embeddings, and Groq-powered LLM responses.
 
-- Upload and index `.txt`, `.md`, `.pdf`, and `.docx` files.
-- Ask natural-language questions over the indexed document set.
-- Stream answers back to the chat UI with source metadata.
-- Uses bundled sample documents so a fresh deployment works immediately after startup.
-- Docker-ready backend and static frontend deployment config.
+---
 
-## Tech Stack
+## ✨ Features
 
-- Frontend: React, Vite, Material UI, Axios
-- Backend: FastAPI, LangChain, ChromaDB, Sentence Transformers, spaCy
-- LLM provider: Groq API
-- Deployment: Render Blueprint for frontend + backend, with optional Vercel frontend config
+### 📚 Effortless Document Uploads
+- Upload `.txt`, `.md`, `.pdf`, and `.docx` files.
+- Automatically extracts, chunks, embeds, and stores document content.
+- Includes bundled sample documents so the app works immediately after deployment.
 
-## Local Setup
+### 💬 Conversational Document Q&A
+- Ask questions in a clean chat interface.
+- Supports recent conversation history for follow-up questions.
+- Streams answers back into the UI.
+- Shows source metadata so answers feel transparent and traceable.
+
+### 🔍 RAG Intelligence
+- Uses ChromaDB for vector storage.
+- Uses sentence-transformer embeddings for semantic retrieval.
+- Combines semantic search with keyword scoring for better document matching.
+- Generates answers with Groq's fast chat completion API.
+
+### 🚀 Deployment Ready
+- Dockerized FastAPI backend.
+- Static React/Vite frontend.
+- Render Blueprint included for one-click-style deployment.
+- Optional Vercel config included for frontend-only hosting.
+
+---
+
+## 📸 Screenshots
+
+### Chat Interface
+
+![Chat Example](backend/documents/chat_example.png)
+
+### Source-Aware Responses
+
+![Chat Example 2](backend/documents/sc2.png)
+
+---
+
+## 🛠️ Tech Stack
 
 ### Backend
+- FastAPI
+- LangChain
+- ChromaDB
+- Sentence Transformers
+- spaCy
+- Groq API
+- PyPDF2
+- docx2txt
+
+### Frontend
+- React
+- Vite
+- Material UI
+- Axios
+- Custom CSS
+
+### Deployment
+- Render for the full app
+- Vercel optional for frontend-only deployment
+- Docker for the backend API
+
+---
+
+## ⚙️ Local Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Ruchi2117/Doc-Chat-bot.git
+cd Doc-Chat-bot
+```
+
+### 2. Backend Setup
 
 ```bash
 cd backend
@@ -29,15 +90,25 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Set `GROQ_API_KEY` in `backend/.env`, then run:
+Add your Groq API key in `backend/.env`:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+Run the backend:
 
 ```bash
 uvicorn main:app --reload
 ```
 
-Backend URL: `http://localhost:8000`
+Backend runs at:
 
-### Frontend
+```text
+http://localhost:8000
+```
+
+### 3. Frontend Setup
 
 ```bash
 cd frontend
@@ -46,11 +117,17 @@ copy .env.example .env
 npm run dev
 ```
 
-Frontend URL: `http://localhost:5173`
+Frontend runs at:
 
-## Environment Variables
+```text
+http://localhost:5173
+```
 
-Backend:
+---
+
+## 🔐 Environment Variables
+
+### Backend
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
@@ -63,34 +140,90 @@ EMBEDDING_DEVICE=cpu
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
-Frontend:
+### Frontend
 
 ```env
 VITE_API_URL=http://localhost:8000
 ```
 
-## Deployment
+---
 
-The recommended deployment is Render for both services:
+## ☁️ Deployment
 
-- Static frontend: `ruchi-doc-chatbot`
-- Docker backend API: `ruchi-doc-chatbot-api`
+The recommended deployment is **Render** because this project has both:
 
-The repo includes `render.yaml`, so Render can create both services from one Blueprint. During Blueprint setup, provide `GROQ_API_KEY` when Render asks for the secret.
+- a static frontend
+- a Dockerized FastAPI backend with ML/RAG dependencies
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the exact steps and production notes.
+This repo includes a `render.yaml` Blueprint that creates:
 
-## Important Production Notes
+```text
+Frontend: https://ruchi-doc-chatbot.onrender.com
+Backend:  https://ruchi-doc-chatbot-api.onrender.com
+```
 
-- Render's free web service can spin down after inactivity, so the first request may be slow.
-- Free Render web services have an ephemeral filesystem. Uploaded documents and generated vectors can reset after restart or redeploy.
-- For a stronger long-term deployment, upgrade the backend service and attach a persistent disk mounted at `/app/data`, then set:
+During Render setup, add your secret:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+Full deployment steps are in:
+
+📘 [DEPLOYMENT.md](DEPLOYMENT.md)
+
+---
+
+## 🧪 Production Notes
+
+- Render free backend services can sleep after inactivity, so the first request may take a little longer.
+- Free Render services use an ephemeral filesystem, so uploaded files can reset after redeploys or restarts.
+- For a stronger long-term deployment, upgrade the backend service and attach a persistent disk.
+
+Persistent disk environment values:
 
 ```env
 DOCUMENTS_DIR=/app/data/documents
 VECTORSTORE_PATH=/app/data/vectorstore
 ```
 
-## License
+---
 
-This project is licensed under the MIT License.
+## 📂 Project Structure
+
+```text
+Doc-Chat-bot/
+├── backend/
+│   ├── documents/          # Sample documents and screenshots
+│   ├── main.py             # FastAPI app
+│   ├── prepare_data.py     # Document loading and vectorstore updates
+│   ├── rag_pipeline.py     # Retrieval and answer generation pipeline
+│   ├── llama_helper.py     # Groq API helper
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── App.css
+│   │   └── main.jsx
+│   └── package.json
+├── backend.Dockerfile
+├── docker-compose.yml
+├── render.yaml
+├── vercel.json
+└── DEPLOYMENT.md
+```
+
+---
+
+## 🙌 Acknowledgments
+
+- [Groq](https://groq.com/) for fast LLM responses
+- [LangChain](https://www.langchain.com/) for RAG tooling
+- [Chroma](https://www.trychroma.com/) for vector storage
+- The open-source community for the libraries that make this stack possible
+
+---
+
+Crafted with care by **Ruchi Shaktawat**.
+
+Thank you for checking out DOC Chatbot!
