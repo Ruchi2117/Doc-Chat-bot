@@ -2,7 +2,12 @@
 
 Meet **DOC Chatbot**: an intelligent document companion that lets you upload files and ask natural-language questions about them. Instead of manually searching through pages of text, DOC Chatbot uses a **Retrieval-Augmented Generation (RAG)** pipeline to find the most relevant context and generate helpful, source-aware answers.
 
-Built with a modern React interface, a FastAPI backend, Chroma vector search, sentence-transformer embeddings, and Groq-powered LLM responses.
+Built with a modern React interface, a FastAPI backend, Chroma vector search, semantic embeddings, and Groq-powered LLM responses.
+
+The project includes two backend profiles:
+
+- `RAG_PROFILE=render`: Chroma vector RAG with ONNX MiniLM embeddings, designed for Render's free 512 MB backend.
+- `RAG_PROFILE=full`: the original full local pipeline using sentence-transformers, LangChain, Torch, and spaCy.
 
 ---
 
@@ -21,7 +26,7 @@ Built with a modern React interface, a FastAPI backend, Chroma vector search, se
 
 ### 🔍 RAG Intelligence
 - Uses ChromaDB for vector storage.
-- Uses sentence-transformer embeddings for semantic retrieval.
+- Uses semantic vector embeddings for retrieval.
 - Combines semantic search with keyword scoring for better document matching.
 - Generates answers with Groq's fast chat completion API.
 
@@ -49,10 +54,9 @@ Built with a modern React interface, a FastAPI backend, Chroma vector search, se
 
 ### Backend
 - FastAPI
-- LangChain
 - ChromaDB
-- Sentence Transformers
-- spaCy
+- ONNX MiniLM embeddings for Render
+- LangChain, Sentence Transformers, Torch, and spaCy in the full local profile
 - Groq API
 - PyPDF2
 - docx2txt
@@ -88,6 +92,12 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env
+```
+
+For the full local pipeline, also install:
+
+```bash
+pip install -r requirements-full.txt
 ```
 
 Add your Groq API key in `backend/.env`:
@@ -131,12 +141,12 @@ http://localhost:5173
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
+RAG_PROFILE=render
 CORS_ORIGINS=http://localhost:5173
 DOCUMENTS_DIR=documents
 VECTORSTORE_PATH=vectorstore
 AUTO_PREPARE_DOCUMENTS=true
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-EMBEDDING_DEVICE=cpu
+CHROMA_COLLECTION=doc_chatbot
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
@@ -153,7 +163,7 @@ VITE_API_URL=http://localhost:8000
 The recommended deployment is **Render** because this project has both:
 
 - a static frontend
-- a Dockerized FastAPI backend with ML/RAG dependencies
+- a Dockerized FastAPI backend with vector RAG dependencies
 
 This repo includes a `render.yaml` Blueprint that creates:
 
@@ -167,6 +177,8 @@ During Render setup, add your secret:
 ```env
 GROQ_API_KEY=your_groq_api_key_here
 ```
+
+Render uses `RAG_PROFILE=render`, which keeps the RAG workflow but avoids loading Torch and spaCy into the 512 MB free backend.
 
 Full deployment steps are in:
 
@@ -197,7 +209,9 @@ Doc-Chat-bot/
 │   ├── documents/          # Sample documents and screenshots
 │   ├── main.py             # FastAPI app
 │   ├── prepare_data.py     # Document loading and vectorstore updates
+│   ├── prepare_data_full.py # Original full local document processor
 │   ├── rag_pipeline.py     # Retrieval and answer generation pipeline
+│   ├── rag_pipeline_full.py # Original full local RAG pipeline
 │   ├── llama_helper.py     # Groq API helper
 │   └── requirements.txt
 ├── frontend/

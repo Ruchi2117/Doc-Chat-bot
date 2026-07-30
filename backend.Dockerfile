@@ -8,7 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/app/.cache/huggingface \
-    TRANSFORMERS_CACHE=/app/.cache/huggingface
+    TRANSFORMERS_CACHE=/app/.cache/huggingface \
+    ANONYMIZED_TELEMETRY=False \
+    OMP_NUM_THREADS=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -18,15 +20,6 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Preload runtime models during the image build to reduce cold-start time.
-RUN python - <<'PY'
-from sentence_transformers import SentenceTransformer
-import spacy
-
-SentenceTransformer("all-MiniLM-L6-v2")
-spacy.load("en_core_web_sm")
-PY
 
 # Copy the rest of the application
 COPY backend/ .

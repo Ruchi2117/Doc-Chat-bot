@@ -1,22 +1,29 @@
-import os
+import hashlib
 import logging
+import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional, Union
-from langchain_community.document_loaders import (
-    Docx2txtLoader,
-    PyPDFLoader,
-    TextLoader
-)
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from typing import Optional, Union
+
+import chromadb
+import docx2txt
+from PyPDF2 import PdfReader
 from settings import resolve_path
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class TextChunk:
+    id: str
+    content: str
+    metadata: dict
+
+
 class DocumentProcessor:
+    """Render-friendly vector indexing with Chroma's ONNX MiniLM embeddings."""
+
     def __init__(
         self,
         data_dir: Optional[Union[str, Path]] = None,
@@ -24,131 +31,136 @@ class DocumentProcessor:
         embedding_model: Optional[str] = None,
         device: Optional[str] = None,
         chunk_size: int = 500,
-        chunk_overlap: int = 50
+        chunk_overlap: int = 50,
     ):
         self.data_dir = Path(data_dir) if data_dir else resolve_path("DOCUMENTS_DIR", "documents")
         self.vectorstore_path = Path(vectorstore_path) if vectorstore_path else resolve_path("VECTORSTORE_PATH", "vectorstore")
-        embedding_model = embedding_model or os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-        device = device or os.getenv("EMBEDDING_DEVICE", "cpu")
-        
-        # Create directories if they don't exist
+        self.collection_name = os.getenv("CHROMA_COLLECTION", "doc_chatbot")
+        self.chunk_size = int(os.getenv("CHUNK_SIZE", str(chunk_size)))
+        self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", str(chunk_overlap)))
+
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.vectorstore_path.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize embedding function
-        self.embedding_function = HuggingFaceEmbeddings(
-            model_name=embedding_model,
-            model_kwargs={"device": device}
-        )
-        
-        # Initialize text splitter
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            length_function=len,
-            add_start_index=True,
-        )
-        
-        # File type to loader mapping
-        self.loaders = {
-            ".pdf": PyPDFLoader,
-            ".txt": TextLoader,
-            ".md": TextLoader,
-            ".docx": Docx2txtLoader,
-        }
-    
-    def process_document(self, file_path: Path) -> List[Dict]:
-        """Process a single document."""
-        documents = []
-        
-        if file_path and file_path.exists():
-            if file_path.suffix.lower() in self.loaders:
-                logger.info(f"Processing specific file: {file_path}")
-                try:
-                    # Load and split the document
-                    loader = self.loaders[file_path.suffix.lower()](str(file_path))
-                    doc = loader.load()
-                    chunks = self.text_splitter.split_documents(doc)
-                    documents.extend(chunks)
-                    logger.info(f"Added {len(chunks)} chunks from {file_path.name}")
-                except Exception as e:
-                    logger.error(f"Error processing {file_path}: {str(e)}")
-                    raise
-        
-        return documents
 
-    def process_documents(self) -> List[Dict]:
-        """Process all documents in the data directory."""
+    def _collection(self):
+        client = chromadb.PersistentClient(path=str(self.vectorstore_path))
+        return client.get_or_create_collection(name=self.collection_name)
+
+    def process_document(self, file_path: Path) -> list[TextChunk]:
+        """Load a document and split it into chunks ready for Chroma."""
+        if not file_path or not file_path.exists():
+            return []
+
+        suffix = file_path.suffix.lower()
+        if suffix not in {".txt", ".md", ".pdf", ".docx"}:
+            logger.info("Skipping unsupported file type: %s", file_path)
+            return []
+
+        logger.info("Processing document: %s", file_path)
+        text = self._extract_text(file_path)
+        if not text.strip():
+            return []
+
+        chunks = []
+        for index, content in enumerate(self._chunk_text(text)):
+            chunk_id = hashlib.sha1(
+                f"{file_path.name}:{index}:{content}".encode("utf-8")
+            ).hexdigest()
+            chunks.append(
+                TextChunk(
+                    id=chunk_id,
+                    content=content,
+                    metadata={
+                        "source": file_path.name,
+                        "path": str(file_path),
+                        "chunk": index,
+                    },
+                )
+            )
+
+        logger.info("Added %s chunks from %s", len(chunks), file_path.name)
+        return chunks
+
+    def process_documents(self) -> list[TextChunk]:
         documents = []
-        
         for file_path in self.data_dir.glob("**/*"):
             if file_path.is_file():
                 documents.extend(self.process_document(file_path))
-        
         return documents
 
-    def update_vectorstore(self, documents: List[Dict]):
-        """Update the existing vector store with new documents."""
+    def update_vectorstore(self, documents: list[TextChunk]):
         if not documents:
-            logger.warning("No documents to process!")
+            logger.warning("No documents to index")
             return
-        
-        try:
-            # Load existing vector store
-            vectorstore = Chroma(
-                persist_directory=str(self.vectorstore_path),
-                embedding_function=self.embedding_function
-            )
-            
-            # Add new documents
-            vectorstore.add_documents(documents)
-            vectorstore.persist()
-            
-            logger.info(f"Successfully updated vector store at {self.vectorstore_path}")
-            logger.info(f"Processed {len(documents)} new chunks")
-            logger.info("Vector store is ready for querying!")
-            
-        except Exception as e:
-            logger.error(f"Error updating vector store: {str(e)}")
-            raise
 
-    def create_vectorstore_from_documents(self, documents: List[Dict]):
-        """Create or update the vector store with the processed documents."""
-        if not documents:
-            logger.warning("No documents to process!")
-            return
-        
-        try:
-            # Create new vector store
-            vectorstore = Chroma.from_documents(
-                documents=documents,
-                embedding=self.embedding_function,
-                persist_directory=str(self.vectorstore_path)
-            )
-            vectorstore.persist()
-            logger.info(f"Successfully created vector store at {self.vectorstore_path}")
-            
-            # Log some stats
-            logger.info(f"Processed {len(documents)} chunks in total")
-            logger.info("Vector store is ready for querying!")
-            
-        except Exception as e:
-            logger.error(f"Error creating vector store: {str(e)}")
-            raise
+        collection = self._collection()
+        collection.upsert(
+            ids=[doc.id for doc in documents],
+            documents=[doc.content for doc in documents],
+            metadatas=[doc.metadata for doc in documents],
+        )
+        logger.info("Indexed %s chunks in Chroma at %s", len(documents), self.vectorstore_path)
+
+    def create_vectorstore_from_documents(self, documents: list[TextChunk]):
+        self.update_vectorstore(documents)
+
+    def _extract_text(self, file_path: Path) -> str:
+        suffix = file_path.suffix.lower()
+
+        if suffix in {".txt", ".md"}:
+            return file_path.read_text(encoding="utf-8", errors="ignore")
+
+        if suffix == ".pdf":
+            reader = PdfReader(str(file_path))
+            return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+
+        if suffix == ".docx":
+            return docx2txt.process(str(file_path)) or ""
+
+        return ""
+
+    def _chunk_text(self, text: str) -> list[str]:
+        normalized = "\n".join(line.strip() for line in text.splitlines())
+        normalized = "\n".join(line for line in normalized.splitlines() if line)
+
+        if len(normalized) <= self.chunk_size:
+            return [normalized]
+
+        chunks = []
+        start = 0
+        text_length = len(normalized)
+
+        while start < text_length:
+            end = min(start + self.chunk_size, text_length)
+            if end < text_length:
+                paragraph_break = normalized.rfind("\n", start, end)
+                sentence_break = normalized.rfind(". ", start, end)
+                split_at = max(paragraph_break, sentence_break)
+                if split_at > start + self.chunk_size // 2:
+                    end = split_at + 1
+
+            chunk = normalized[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+
+            if end >= text_length:
+                break
+
+            next_start = end - self.chunk_overlap
+            start = max(next_start, end) if next_start <= start else next_start
+
+        return chunks
+
 
 def main():
-    # Initialize processor
     processor = DocumentProcessor()
-    
-    # Check if there are any documents
     if not list(processor.data_dir.glob("**/*")):
-        logger.warning(f"No documents found in {processor.data_dir}. Please add some documents first!")
-        logger.info("Supported formats: PDF, TXT, MD")
+        logger.warning("No documents found in %s", processor.data_dir)
         return
-    
-    # Process documents and create vector store
+
     documents = processor.process_documents()
     processor.create_vectorstore_from_documents(documents)
+
 
 if __name__ == "__main__":
     main()

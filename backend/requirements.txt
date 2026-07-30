@@ -1,4 +1,4 @@
-# === Core Dependencies ===
+# === Render-friendly core API ===
 fastapi==0.115.9
 uvicorn==0.34.2
 python-dotenv==1.1.0
@@ -7,33 +7,17 @@ pydantic==2.11.4
 pydantic_core==2.33.2
 pydantic-settings==2.9.1
 
-# === LangChain & RAG Stack ===
-langchain==0.3.25
-langchain-community==0.3.24
-langchain-core==0.3.60
-langchain-text-splitters==0.3.8
-langchain-huggingface==0.2.0
+# === Vector RAG without Torch/spaCy ===
 chromadb==1.0.9
-sentence-transformers==4.1.0
+numpy==1.26.4
 
-# === NLP & ML ===
-torch==2.7.0
-transformers==4.51.3
-spacy==3.8.4
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-sentencepiece==0.2.0
-accelerate==0.25.0
-
-# === PDF Processing ===
+# === Document processing ===
 PyPDF2==3.0.1
 docx2txt==0.8
 
-# === Utilities ===
-tqdm==4.67.1
-numpy==2.2.5
-requests==2.32.3
+# === Groq API client ===
 httpx==0.28.1
-aiohttp==3.11.18
+requests==2.32.3
 
-# === Optional: For deployment ===
-gunicorn==21.2.0  # Production server
+# === Production server ===
+gunicorn==21.2.0

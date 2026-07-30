@@ -34,13 +34,13 @@ services:
         value: https://ruchi-doc-chatbot.onrender.com
       - key: AUTO_PREPARE_DOCUMENTS
         value: "true"
+      - key: RAG_PROFILE
+        value: render
       - key: DOCUMENTS_DIR
         value: documents
       - key: VECTORSTORE_PATH
         value: vectorstore
-      - key: EMBEDDING_MODEL
-        value: all-MiniLM-L6-v2
-      - key: EMBEDDING_DEVICE
-        value: cpu
+      - key: CHROMA_COLLECTION
+        value: doc_chatbot
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile

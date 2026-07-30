@@ -12,7 +12,6 @@ import asyncio
 import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
-from prepare_data import DocumentProcessor
 from settings import csv_env, env_bool, resolve_path
 
 # Setup logging
@@ -22,6 +21,12 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 env_path = os.getenv("DOTENV_PATH", None)
 load_dotenv(dotenv_path=env_path)
+RAG_PROFILE = os.getenv("RAG_PROFILE", "render").strip().lower()
+
+if RAG_PROFILE == "full":
+    from prepare_data_full import DocumentProcessor
+else:
+    from prepare_data import DocumentProcessor
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -160,7 +165,12 @@ async def health_check():
 async def startup_event():
     global rag_pipeline, document_processor
     try:
-        from rag_pipeline import RAGPipeline
+        if RAG_PROFILE == "full":
+            from rag_pipeline_full import RAGPipeline
+        else:
+            from rag_pipeline import RAGPipeline
+
+        logger.info("Starting backend with RAG_PROFILE=%s", RAG_PROFILE)
         documents_dir = resolve_path("DOCUMENTS_DIR", "documents")
         vectorstore_path = resolve_path("VECTORSTORE_PATH", "vectorstore")
         documents_dir.mkdir(parents=True, exist_ok=True)

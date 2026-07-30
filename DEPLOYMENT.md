@@ -3,7 +3,9 @@
 This project should be deployed as two services:
 
 - A static React/Vite frontend.
-- A Dockerized FastAPI backend.
+- A Dockerized FastAPI backend using the Render-friendly vector RAG profile.
+
+Render's free backend has a 512 MB memory limit. The deployment profile keeps the RAG flow, but uses Chroma's ONNX MiniLM embeddings instead of loading Torch, sentence-transformers, and spaCy at runtime.
 
 The easiest path is the included Render Blueprint in `render.yaml`.
 
@@ -25,6 +27,7 @@ The backend needs:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
+RAG_PROFILE=render
 ```
 
 ## 3. Deploy Both Services on Render
@@ -36,6 +39,8 @@ GROQ_API_KEY=your_groq_api_key_here
 5. Render will detect `render.yaml`.
 6. When prompted for `GROQ_API_KEY`, paste your Groq API key.
 7. Create the Blueprint.
+
+The Blueprint sets `RAG_PROFILE=render` for the backend. Keep that value on the free instance.
 
 Render should create:
 
@@ -116,7 +121,29 @@ VECTORSTORE_PATH=/app/data/vectorstore
 
 4. Redeploy the backend.
 
-## 7. Resume Link
+## 7. Full RAG Profile
+
+The original heavier local pipeline is still available for local development or a larger paid backend.
+
+Install the extra dependencies:
+
+```bash
+cd backend
+pip install -r requirements.txt
+pip install -r requirements-full.txt
+```
+
+Then set:
+
+```env
+RAG_PROFILE=full
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+EMBEDDING_DEVICE=cpu
+```
+
+Do not use `RAG_PROFILE=full` on Render's free 512 MB instance.
+
+## 8. Resume Link
 
 Use the frontend URL on your resume:
 
