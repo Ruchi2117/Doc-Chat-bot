@@ -25,15 +25,16 @@ class LlamaHelper:
         
         logger.info("Groq API key configured")
         
-        self.api_base = "https://api.groq.com/openai/v1"
-        self.model = "llama-3.3-70b-versatile"
+        self.api_base = os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1")
+        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        timeout = float(os.getenv("GROQ_TIMEOUT", "60"))
         self.client = httpx.AsyncClient(
             base_url=self.api_base,
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             },
-            timeout=30.0
+            timeout=timeout
         )
 
     async def generate_response(self, context: str, question: str) -> AsyncGenerator[str, None]:

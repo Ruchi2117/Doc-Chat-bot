@@ -62,7 +62,7 @@ body {
 /* Decorative background elements */
 body::before,
 body::after {
-  content: "🌟";
+  content: "";
   position: fixed;
   font-size: 1.5rem;
   animation: twinkle 3s ease-in-out infinite;
@@ -140,7 +140,7 @@ button {
 }
 
 button::before {
-  content: "✨";
+  content: "";
   position: absolute;
   left: -15px;
   top: 50%;

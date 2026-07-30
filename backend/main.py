@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
 from prepare_data import DocumentProcessor
+from settings import csv_env, env_bool, resolve_path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -25,20 +26,17 @@ load_dotenv(dotenv_path=env_path)
 # Initialize FastAPI app
 app = FastAPI(
     title="RAG Chatbot API",
-    root_path="/api"
+    root_path=os.getenv("ROOT_PATH", "")
 )
 
-# Configure CORS origins from environment or default to all
-origins = os.getenv("CORS_ORIGINS", "*").split(",")
-if origins == ["*"]:
-    allow_origins = ["*"]
-else:
-    allow_origins = origins
+# Configure CORS origins from environment or default to all.
+allow_origins = csv_env("CORS_ORIGINS", "*")
+allow_credentials = env_bool("CORS_ALLOW_CREDENTIALS", False) and allow_origins != ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -53,42 +51,93 @@ class AskRequest(BaseModel):
 rag_pipeline = None
 document_processor = None
 
-ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.md', '.doc', '.docx'}
+ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.md', '.docx'}
+
+
+@app.get("/")
+async def root():
+    """Small root endpoint for platform smoke checks and browser visits."""
+    return {
+        "service": "RAG Chatbot Backend",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
+def vectorstore_has_data(vectorstore_path: Path) -> bool:
+    return vectorstore_path.exists() and any(vectorstore_path.iterdir())
+
+
+async def prepare_default_documents_if_needed(documents_dir: Path, vectorstore_path: Path):
+    if not env_bool("AUTO_PREPARE_DOCUMENTS", True):
+        logger.info("AUTO_PREPARE_DOCUMENTS is disabled")
+        return
+
+    if vectorstore_has_data(vectorstore_path):
+        logger.info("Vector store already exists at %s", vectorstore_path)
+        return
+
+    if not documents_dir.exists() or not any(documents_dir.glob("**/*")):
+        logger.warning("No bundled documents found in %s", documents_dir)
+        return
+
+    logger.info("Preparing bundled documents from %s", documents_dir)
+    processor = DocumentProcessor(
+        data_dir=documents_dir,
+        vectorstore_path=vectorstore_path,
+    )
+    documents = await run_in_threadpool(processor.process_documents)
+    if documents:
+        await run_in_threadpool(processor.create_vectorstore_from_documents, documents)
+    else:
+        logger.warning("Bundled documents did not produce any chunks")
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Handle document uploads and process them for the RAG pipeline."""
     try:
+        filename = Path(file.filename or "").name
+        if not filename:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Uploaded file must have a filename"}
+            )
+
         # Check file extension
-        file_ext = Path(file.filename).suffix.lower()
+        file_ext = Path(filename).suffix.lower()
         if file_ext not in ALLOWED_EXTENSIONS:
             return JSONResponse(
                 status_code=400,
                 content={"error": f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"}
             )
 
-        # Create documents directory if it doesn't exist
-        documents_dir = Path("documents")
-        documents_dir.mkdir(exist_ok=True)
+        global document_processor, rag_pipeline
+        if document_processor is None:
+            document_processor = DocumentProcessor()
 
         # Save the file
-        file_path = documents_dir / file.filename
+        document_processor.data_dir.mkdir(parents=True, exist_ok=True)
+        file_path = document_processor.data_dir / filename
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         # Process the new document
-        global document_processor
-        if document_processor is None:
-            document_processor = DocumentProcessor()
-            
-        # Process only the new document and update vector store
         documents = await run_in_threadpool(document_processor.process_document, file_path)
+        if not documents:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No readable text could be extracted from this file"}
+            )
+
         await run_in_threadpool(document_processor.update_vectorstore, documents)
+        if rag_pipeline is not None:
+            await run_in_threadpool(rag_pipeline.reload_vectorstore)
 
         return JSONResponse(
             content={
                 "message": "File uploaded and processed successfully",
-                "filename": file.filename
+                "filename": filename
             }
         )
     except Exception as e:
@@ -109,14 +158,31 @@ async def health_check():
 
 @app.on_event("startup")
 async def startup_event():
-    global rag_pipeline
+    global rag_pipeline, document_processor
     try:
         from rag_pipeline import RAGPipeline
-        rag_pipeline = RAGPipeline()
+        documents_dir = resolve_path("DOCUMENTS_DIR", "documents")
+        vectorstore_path = resolve_path("VECTORSTORE_PATH", "vectorstore")
+        documents_dir.mkdir(parents=True, exist_ok=True)
+        vectorstore_path.mkdir(parents=True, exist_ok=True)
+
+        await prepare_default_documents_if_needed(documents_dir, vectorstore_path)
+
+        document_processor = DocumentProcessor(
+            data_dir=documents_dir,
+            vectorstore_path=vectorstore_path,
+        )
+        rag_pipeline = RAGPipeline(chroma_path=str(vectorstore_path))
         logger.info("RAG pipeline initialized successfully")
     except Exception as e:
         logger.exception("Failed to initialize RAG pipeline")
         raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if rag_pipeline and getattr(rag_pipeline, "llama_helper", None):
+        await rag_pipeline.llama_helper.aclose()
 
 async def stream_response(question: str, use_cache: bool = True, history: Optional[List[Dict[str, str]]] = None):
     """Stream response chunks as Server-Sent Events."""

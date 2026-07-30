@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
 import { CircularProgress, Snackbar, Alert, Button } from '@mui/material';
 import './App.css';
 
 // API configuration
 const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, ''),
   timeout: 60000, // 60 second timeout
 };
 
@@ -33,7 +32,7 @@ function App() {
         setError(null);
       } catch (err) {
         setIsConnected(false);
-        setError('Cannot connect to backend server. Please make sure it is running.');
+        setError('Cannot connect to the backend server. Please make sure it is running.');
       }
     };
 
@@ -87,7 +86,7 @@ function App() {
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      const response = await api.post('/ask', {
+      await api.post('/ask', {
         question: userMessage.content, // Send the content of the userMessage object
         use_cache: useCaching,
         history: historyToSend // Add the conversation history
@@ -164,7 +163,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await api.post('/upload', formData, {
+      await api.post('/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -174,7 +173,7 @@ function App() {
       // Add a system message to show the upload success
       setMessages(prev => [...prev, {
         role: 'system',
-        content: `📓 Document uploaded: ${file.name}. You can now ask questions about this document.`,
+        content: `Document uploaded: ${file.name}. You can now ask questions about this document.`,
         isSystem: true
       }]);
     } catch (error) {
@@ -190,20 +189,13 @@ function App() {
     }
   };
 
-  const formatTimestamp = (timestamp) => {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(timestamp);
-  };
-  
   return (
     <div className="app theme-pink">
       <header className="chat-header">
         <h1>DOC Chatbot</h1>
         <div className="connection-status">
           <span className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`} />
-          {isConnected ? '🌟 Connected' : '💫 Disconnected'}
+          {isConnected ? 'Connected' : 'Disconnected'}
         </div>
       </header>
 
@@ -222,7 +214,7 @@ function App() {
             disabled={isUploading || !isConnected}
             style={{ marginRight: '10px' }}
           >
-            {isUploading ? '🎓 Uploading...' : '📄 Upload Document'}
+            {isUploading ? 'Uploading...' : 'Upload Document'}
           </Button>
           {uploadStatus && (
             <span className={uploadStatus.includes('Failed') ? 'error-text' : 'success-text'}>
@@ -236,7 +228,7 @@ function App() {
             checked={useCaching}
             onChange={(e) => setUseCaching(e.target.checked)}
           />
-          {'🔭 Enable Response Caching'} 
+          {'Enable Response Caching'}
         </label>
       </div>
 
@@ -249,19 +241,19 @@ function App() {
             >
               <div className="message-content">
                 {message.content}
-                {message.isStreaming && <span className="cursor">{'✨'}</span>}
+                {message.isStreaming && <span className="cursor">|</span>}
               </div>
               {message.role === 'assistant' && message.metadata && message.metadata.length > 0 && (
                 <div className="sources">
                   <details>
-                    <summary>{'🔍 Sources'} ({message.metadata.length})</summary>
+                    <summary>Sources ({message.metadata.length})</summary>
                     <ul>
                       {message.metadata.map((source, idx) => (
                         <li key={idx}>
-                          {'📄'} {source.source}
+                          {source.source}
                           {message.scores && message.scores[idx] && (
                             <span className="score">
-                              {'⭐'} {(message.scores[idx] * 100).toFixed(1)}% match
+                              {(message.scores[idx] * 100).toFixed(1)}% match
                             </span>
                           )}
                         </li>
@@ -285,11 +277,11 @@ function App() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={"🔭 Ask me anything..."}
+            placeholder="Ask me anything about your documents..."
             disabled={!isConnected || isLoading}
           />
           <button type="submit" disabled={!isConnected || isLoading}>
-            {isLoading ? '🎓 Thinking...' : '💫 Send'}
+            {isLoading ? 'Thinking...' : 'Send'}
           </button>
         </form>
       </div>

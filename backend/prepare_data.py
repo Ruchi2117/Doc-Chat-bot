@@ -1,15 +1,16 @@
 import os
 import logging
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional, Union
 from langchain_community.document_loaders import (
+    Docx2txtLoader,
     PyPDFLoader,
-    TextLoader,
-    UnstructuredMarkdownLoader
+    TextLoader
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from settings import resolve_path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -18,23 +19,26 @@ logger = logging.getLogger(__name__)
 class DocumentProcessor:
     def __init__(
         self,
-        data_dir: str = "documents",
-        vectorstore_path: str = "vectorstore",
-        embedding_model: str = "all-MiniLM-L6-v2",
+        data_dir: Optional[Union[str, Path]] = None,
+        vectorstore_path: Optional[Union[str, Path]] = None,
+        embedding_model: Optional[str] = None,
+        device: Optional[str] = None,
         chunk_size: int = 500,
         chunk_overlap: int = 50
     ):
-        self.data_dir = Path(data_dir)
-        self.vectorstore_path = Path(vectorstore_path)
+        self.data_dir = Path(data_dir) if data_dir else resolve_path("DOCUMENTS_DIR", "documents")
+        self.vectorstore_path = Path(vectorstore_path) if vectorstore_path else resolve_path("VECTORSTORE_PATH", "vectorstore")
+        embedding_model = embedding_model or os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        device = device or os.getenv("EMBEDDING_DEVICE", "cpu")
         
         # Create directories if they don't exist
-        self.data_dir.mkdir(exist_ok=True)
-        self.vectorstore_path.mkdir(exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.vectorstore_path.mkdir(parents=True, exist_ok=True)
         
         # Initialize embedding function
         self.embedding_function = HuggingFaceEmbeddings(
             model_name=embedding_model,
-            model_kwargs={"device": "cpu"}
+            model_kwargs={"device": device}
         )
         
         # Initialize text splitter
@@ -49,7 +53,8 @@ class DocumentProcessor:
         self.loaders = {
             ".pdf": PyPDFLoader,
             ".txt": TextLoader,
-            ".md": UnstructuredMarkdownLoader
+            ".md": TextLoader,
+            ".docx": Docx2txtLoader,
         }
     
     def process_document(self, file_path: Path) -> List[Dict]:
@@ -143,7 +148,7 @@ def main():
     
     # Process documents and create vector store
     documents = processor.process_documents()
-    processor.create_vectorstore(documents)
+    processor.create_vectorstore_from_documents(documents)
 
 if __name__ == "__main__":
     main()

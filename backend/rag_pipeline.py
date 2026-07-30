@@ -7,11 +7,11 @@ import logging
 import os
 from dataclasses import dataclass
 from heapq import nlargest
-from pathlib import Path
 from functools import lru_cache
 import asyncio
 import time
 from collections import OrderedDict
+from settings import resolve_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,12 +66,11 @@ class RAGPipeline:
         
         # Load environment settings
         if chroma_path is None:
-            # Get the directory where this file is located
-            current_dir = Path(__file__).resolve().parent
-            chroma_path = str(current_dir / "vectorstore")
-        
+            chroma_path = str(resolve_path("VECTORSTORE_PATH", "vectorstore"))
+
         embedding_model = embedding_model or os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
         device = device or os.getenv("EMBEDDING_DEVICE", "cpu")
+        self.chroma_path = chroma_path
 
         logger.info(f"Using vector store at: {chroma_path}")
 
@@ -86,10 +85,10 @@ class RAGPipeline:
         # Load or create vector store
         try:
             self.db = Chroma(
-                persist_directory=chroma_path,
+                persist_directory=self.chroma_path,
                 embedding_function=self.embedding_function
             )
-            logger.info(f"Loaded Chroma vectorstore from '{chroma_path}'")
+            logger.info(f"Loaded Chroma vectorstore from '{self.chroma_path}'")
         except Exception as e:
             logger.exception("Failed to initialize Chroma vectorstore")
             raise
@@ -160,7 +159,7 @@ class RAGPipeline:
                 continue
             
             # Get the best chunk from this source
-            doc_obj, dist = max(docs, key=lambda x: x[1])
+            doc_obj, dist = min(docs, key=lambda x: x[1])
             
             # Calculate scores asynchronously
             keyword_score = await asyncio.to_thread(
@@ -183,6 +182,15 @@ class RAGPipeline:
         top = nlargest(k, candidates, key=lambda x: x.hybrid_score)
         logger.info(f"Selected top {len(top)} docs from unique sources for query '{query}'")
         return top
+
+    def reload_vectorstore(self):
+        """Reload Chroma after newly uploaded documents are persisted."""
+        self.db = Chroma(
+            persist_directory=self.chroma_path,
+            embedding_function=self.embedding_function
+        )
+        self.response_cache.cache.clear()
+        logger.info("Reloaded Chroma vectorstore from '%s'", self.chroma_path)
 
     async def answer_question_stream(
         self,
