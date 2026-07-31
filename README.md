@@ -21,6 +21,7 @@ The project includes two backend profiles:
 ### 💬 Conversational Document Q&A
 - Ask questions in a clean chat interface.
 - Supports recent conversation history for follow-up questions.
+- Keeps uploaded files isolated to the current browser session.
 - Streams answers back into the UI.
 - Shows source metadata so answers feel transparent and traceable.
 
@@ -150,6 +151,8 @@ CHROMA_COLLECTION=doc_chatbot
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
+For production demos, `render.yaml` sets `AUTO_PREPARE_DOCUMENTS=false` so the bot answers only from documents uploaded in that browser session.
+
 ### Frontend
 
 ```env
@@ -179,6 +182,8 @@ GROQ_API_KEY=your_groq_api_key_here
 ```
 
 Render uses `RAG_PROFILE=render`, which keeps the RAG workflow but avoids loading Torch and spaCy into the 512 MB free backend.
+
+The deployed frontend sends a tab-specific `session_id` with uploads and questions, so one session's uploaded files are not mixed with another session's files.
 
 Full deployment steps are in:
 

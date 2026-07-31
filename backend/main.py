@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -12,7 +12,7 @@ import asyncio
 import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
-from settings import csv_env, env_bool, resolve_path
+from settings import csv_env, documents_dir_for_session, env_bool, resolve_path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +51,7 @@ class AskRequest(BaseModel):
     question: str
     use_cache: bool = True
     history: Optional[List[Dict[str, str]]] = None
+    session_id: Optional[str] = None
 
 # Initialize RAG pipeline placeholder
 rag_pipeline = None
@@ -88,18 +89,40 @@ async def prepare_default_documents_if_needed(documents_dir: Path, vectorstore_p
         return
 
     logger.info("Preparing bundled documents from %s", documents_dir)
-    processor = DocumentProcessor(
-        data_dir=documents_dir,
-        vectorstore_path=vectorstore_path,
-    )
+    if RAG_PROFILE == "full":
+        processor = DocumentProcessor(
+            data_dir=documents_dir,
+            vectorstore_path=vectorstore_path,
+        )
+    else:
+        processor = DocumentProcessor(
+            data_dir=documents_dir,
+            vectorstore_path=vectorstore_path,
+            session_id="default",
+        )
     documents = await run_in_threadpool(processor.process_documents)
     if documents:
         await run_in_threadpool(processor.create_vectorstore_from_documents, documents)
     else:
         logger.warning("Bundled documents did not produce any chunks")
 
+
+def build_document_processor(documents_dir: Path, vectorstore_path: Path, session_id: Optional[str] = None):
+    if RAG_PROFILE == "full":
+        return DocumentProcessor(
+            data_dir=documents_dir,
+            vectorstore_path=vectorstore_path,
+        )
+
+    return DocumentProcessor(
+        data_dir=documents_dir_for_session(documents_dir, session_id),
+        vectorstore_path=vectorstore_path,
+        session_id=session_id,
+    )
+
+
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), session_id: Optional[str] = Form(default=None)):
     """Handle document uploads and process them for the RAG pipeline."""
     try:
         filename = Path(file.filename or "").name
@@ -118,31 +141,40 @@ async def upload_file(file: UploadFile = File(...)):
             )
 
         global document_processor, rag_pipeline
-        if document_processor is None:
-            document_processor = DocumentProcessor()
+        documents_dir = resolve_path("DOCUMENTS_DIR", "documents")
+        vectorstore_path = resolve_path("VECTORSTORE_PATH", "vectorstore")
+        processor = build_document_processor(
+            documents_dir=documents_dir,
+            vectorstore_path=vectorstore_path,
+            session_id=session_id,
+        )
 
         # Save the file
-        document_processor.data_dir.mkdir(parents=True, exist_ok=True)
-        file_path = document_processor.data_dir / filename
+        processor.data_dir.mkdir(parents=True, exist_ok=True)
+        file_path = processor.data_dir / filename
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         # Process the new document
-        documents = await run_in_threadpool(document_processor.process_document, file_path)
+        documents = await run_in_threadpool(processor.process_document, file_path)
         if not documents:
             return JSONResponse(
                 status_code=400,
                 content={"error": "No readable text could be extracted from this file"}
             )
 
-        await run_in_threadpool(document_processor.update_vectorstore, documents)
+        await run_in_threadpool(processor.update_vectorstore, documents)
         if rag_pipeline is not None:
-            await run_in_threadpool(rag_pipeline.reload_vectorstore)
+            if RAG_PROFILE == "full":
+                await run_in_threadpool(rag_pipeline.reload_vectorstore)
+            else:
+                await run_in_threadpool(rag_pipeline.reload_vectorstore, session_id)
 
         return JSONResponse(
             content={
                 "message": "File uploaded and processed successfully",
-                "filename": filename
+                "filename": filename,
+                "session_id": session_id,
             }
         )
     except Exception as e:
@@ -158,7 +190,8 @@ async def health_check():
     return {
         "status": "ok",
         "service": "RAG Chatbot Backend",
-        "rag_pipeline": "initialized" if rag_pipeline else "not initialized"
+        "rag_pipeline": "initialized" if rag_pipeline else "not initialized",
+        "rag_profile": RAG_PROFILE,
     }
 
 @app.on_event("startup")
@@ -178,9 +211,10 @@ async def startup_event():
 
         await prepare_default_documents_if_needed(documents_dir, vectorstore_path)
 
-        document_processor = DocumentProcessor(
-            data_dir=documents_dir,
+        document_processor = build_document_processor(
+            documents_dir=documents_dir,
             vectorstore_path=vectorstore_path,
+            session_id="default",
         )
         rag_pipeline = RAGPipeline(chroma_path=str(vectorstore_path))
         logger.info("RAG pipeline initialized successfully")
@@ -194,10 +228,22 @@ async def shutdown_event():
     if rag_pipeline and getattr(rag_pipeline, "llama_helper", None):
         await rag_pipeline.llama_helper.aclose()
 
-async def stream_response(question: str, use_cache: bool = True, history: Optional[List[Dict[str, str]]] = None):
+async def stream_response(
+    question: str,
+    use_cache: bool = True,
+    history: Optional[List[Dict[str, str]]] = None,
+    session_id: Optional[str] = None,
+):
     """Stream response chunks as Server-Sent Events."""
     try:
-        async for chunk, metadata, scores in rag_pipeline.answer_question_stream(question, use_cache=use_cache, history=history):
+        stream_kwargs = {
+            "use_cache": use_cache,
+            "history": history,
+        }
+        if RAG_PROFILE != "full":
+            stream_kwargs["session_id"] = session_id
+
+        async for chunk, metadata, scores in rag_pipeline.answer_question_stream(question, **stream_kwargs):
             # Prepare SSE message
             data = {
                 "chunk": chunk,
@@ -215,13 +261,13 @@ async def stream_response(question: str, use_cache: bool = True, history: Option
         yield "data: [DONE]\n\n"
 
 @app.get("/ask")
-async def ask_question_get(question: str, use_cache: bool = True):
+async def ask_question_get(question: str, use_cache: bool = True, session_id: Optional[str] = None):
     """GET endpoint for SSE streaming."""
     if not question.strip():
         raise HTTPException(status_code=400, detail="`question` field is required")
 
     return StreamingResponse(
-        stream_response(question.strip(), use_cache=use_cache, history=None),
+        stream_response(question.strip(), use_cache=use_cache, history=None, session_id=session_id),
         media_type="text/event-stream"
     )
 
@@ -233,7 +279,12 @@ async def ask_question_post(payload: AskRequest):
         raise HTTPException(status_code=400, detail="`question` field is required")
 
     return StreamingResponse(
-        stream_response(question, use_cache=payload.use_cache, history=payload.history),
+        stream_response(
+            question,
+            use_cache=payload.use_cache,
+            history=payload.history,
+            session_id=payload.session_id,
+        ),
         media_type="text/event-stream"
     )
 

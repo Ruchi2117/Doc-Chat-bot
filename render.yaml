@@ -33,7 +33,7 @@ services:
       - key: CORS_ORIGINS
         value: https://ruchi-doc-chatbot.onrender.com
       - key: AUTO_PREPARE_DOCUMENTS
-        value: "true"
+        value: "false"
       - key: RAG_PROFILE
         value: render
       - key: DOCUMENTS_DIR

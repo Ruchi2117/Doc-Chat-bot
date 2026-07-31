@@ -10,7 +10,7 @@ from typing import AsyncGenerator, Dict, List, Optional, Tuple
 
 import chromadb
 from llama_helper import LlamaHelper
-from settings import resolve_path
+from settings import collection_name_for_session, resolve_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -78,30 +78,41 @@ class RAGPipeline:
     ):
         self.response_cache = ResponseCache(capacity=cache_capacity, ttl=cache_ttl)
         self.chroma_path = chroma_path or str(resolve_path("VECTORSTORE_PATH", "vectorstore"))
-        self.collection_name = os.getenv("CHROMA_COLLECTION", "doc_chatbot")
-        self.client = None
-        self.collection = None
+        self.base_collection_name = os.getenv("CHROMA_COLLECTION", "doc_chatbot")
+        self.client = chromadb.PersistentClient(path=self.chroma_path)
+        self.collections = {}
 
         logger.info("Using Chroma vector store at: %s", self.chroma_path)
         self.reload_vectorstore()
         self.llama_helper = LlamaHelper()
 
-    def reload_vectorstore(self):
-        """Reconnect to Chroma after newly uploaded documents are persisted."""
-        self.client = chromadb.PersistentClient(path=self.chroma_path)
-        self.collection = self.client.get_or_create_collection(name=self.collection_name)
-        self.response_cache.cache.clear()
-        logger.info("Loaded Chroma collection '%s'", self.collection_name)
+    def _collection(self, session_id: Optional[str] = None):
+        collection_name = collection_name_for_session(self.base_collection_name, session_id)
+        if collection_name not in self.collections:
+            self.collections[collection_name] = self.client.get_or_create_collection(name=collection_name)
+            logger.info("Loaded Chroma collection '%s'", collection_name)
+        return self.collections[collection_name]
 
-    async def hybrid_search(self, query: str, k: int = 3) -> List[SearchResult]:
+    def reload_vectorstore(self, session_id: Optional[str] = None):
+        """Reconnect to Chroma after newly uploaded documents are persisted."""
+        if session_id is None:
+            self.collections.clear()
+        else:
+            collection_name = collection_name_for_session(self.base_collection_name, session_id)
+            self.collections.pop(collection_name, None)
+        self.response_cache.cache.clear()
+        self._collection(session_id)
+
+    async def hybrid_search(self, query: str, k: int = 3, session_id: Optional[str] = None) -> List[SearchResult]:
         """Semantic vector search with a light keyword relevance boost."""
-        count = await asyncio.to_thread(self.collection.count)
+        collection = self._collection(session_id)
+        count = await asyncio.to_thread(collection.count)
         if count == 0:
             return []
 
         n_results = min(k * 3, count)
         raw_results = await asyncio.to_thread(
-            self.collection.query,
+            collection.query,
             query_texts=[query],
             n_results=n_results,
             include=["documents", "metadatas", "distances"],
@@ -138,19 +149,21 @@ class RAGPipeline:
         k: int = 3,
         use_cache: bool = True,
         history: Optional[List[Dict[str, str]]] = None,
+        session_id: Optional[str] = None,
     ) -> AsyncGenerator[Tuple[str, List[Dict], List[float]], None]:
+        cache_key = f"{collection_name_for_session(self.base_collection_name, session_id)}:{query}"
         if use_cache:
-            cached_response = await self.response_cache.get(query)
+            cached_response = await self.response_cache.get(cache_key)
             if cached_response is not None:
                 logger.info("Cache hit for query: %s", query)
                 yield cached_response
                 return
 
-        results = await self.hybrid_search(query, k)
+        results = await self.hybrid_search(query, k, session_id=session_id)
         if not results:
-            response = ("No relevant information found.", [], [])
+            response = ("No documents are indexed for this browser session yet. Please upload a document first.", [], [])
             if use_cache:
-                await self.response_cache.put(query, response)
+                await self.response_cache.put(cache_key, response)
             yield response
             return
 
@@ -177,7 +190,7 @@ class RAGPipeline:
 
         if use_cache:
             complete_response = ("".join(full_response), metadata, scores)
-            await self.response_cache.put(query, complete_response)
+            await self.response_cache.put(cache_key, complete_response)
 
     def _important_tokens(self, text: str) -> set[str]:
         tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())

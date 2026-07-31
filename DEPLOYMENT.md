@@ -42,6 +42,8 @@ RAG_PROFILE=render
 
 The Blueprint sets `RAG_PROFILE=render` for the backend. Keep that value on the free instance.
 
+It also sets `AUTO_PREPARE_DOCUMENTS=false`, so the production demo answers only from documents uploaded in the current browser session. That prevents bundled sample files or previous uploads from being mixed into a fresh demo.
+
 Render should create:
 
 - Frontend: `https://ruchi-doc-chatbot.onrender.com`

@@ -10,6 +10,25 @@ const API_CONFIG = {
 };
 
 const api = axios.create(API_CONFIG);
+const SESSION_STORAGE_KEY = 'doc-chatbot-session-id';
+
+const createSessionId = () => {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const getSessionId = () => {
+  const existingSessionId = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+  if (existingSessionId) {
+    return existingSessionId;
+  }
+
+  const nextSessionId = createSessionId();
+  window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSessionId);
+  return nextSessionId;
+};
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -20,6 +39,7 @@ function App() {
   const [useCaching, setUseCaching] = useState(true);
   const [uploadStatus, setUploadStatus] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [sessionId, setSessionId] = useState(getSessionId);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   
@@ -89,7 +109,8 @@ function App() {
       await api.post('/ask', {
         question: userMessage.content, // Send the content of the userMessage object
         use_cache: useCaching,
-        history: historyToSend // Add the conversation history
+        history: historyToSend, // Add the conversation history
+        session_id: sessionId
       }, {
         responseType: 'text',
         headers: {
@@ -161,6 +182,7 @@ function App() {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('session_id', sessionId);
 
     try {
       await api.post('/upload', formData, {
@@ -189,6 +211,16 @@ function App() {
     }
   };
 
+  const handleNewSession = () => {
+    const nextSessionId = createSessionId();
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSessionId);
+    setSessionId(nextSessionId);
+    setMessages([]);
+    setInput('');
+    setUploadStatus('');
+    setError(null);
+  };
+
   return (
     <div className="app theme-pink">
       <header className="chat-header">
@@ -204,7 +236,7 @@ function App() {
           <input
             type="file"
             onChange={handleFileUpload}
-            accept=".txt,.pdf,.md,.doc,.docx"
+            accept=".txt,.pdf,.md,.docx"
             ref={fileInputRef}
             style={{ display: 'none' }}
           />
@@ -222,6 +254,14 @@ function App() {
             </span>
           )}
         </div>
+        <Button
+          variant="outlined"
+          onClick={handleNewSession}
+          disabled={isLoading || isUploading}
+          style={{ marginRight: '10px' }}
+        >
+          New Session
+        </Button>
         <label className="cache-toggle">
           <input
             type="checkbox"

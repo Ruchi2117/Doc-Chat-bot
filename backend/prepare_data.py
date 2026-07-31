@@ -8,7 +8,7 @@ from typing import Optional, Union
 import chromadb
 import docx2txt
 from PyPDF2 import PdfReader
-from settings import resolve_path
+from settings import collection_name_for_session, normalize_session_id, resolve_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,12 +30,16 @@ class DocumentProcessor:
         vectorstore_path: Optional[Union[str, Path]] = None,
         embedding_model: Optional[str] = None,
         device: Optional[str] = None,
+        session_id: Optional[str] = None,
+        collection_name: Optional[str] = None,
         chunk_size: int = 500,
         chunk_overlap: int = 50,
     ):
         self.data_dir = Path(data_dir) if data_dir else resolve_path("DOCUMENTS_DIR", "documents")
         self.vectorstore_path = Path(vectorstore_path) if vectorstore_path else resolve_path("VECTORSTORE_PATH", "vectorstore")
-        self.collection_name = os.getenv("CHROMA_COLLECTION", "doc_chatbot")
+        self.session_key = normalize_session_id(session_id)
+        base_collection_name = collection_name or os.getenv("CHROMA_COLLECTION", "doc_chatbot")
+        self.collection_name = collection_name_for_session(base_collection_name, session_id)
         self.chunk_size = int(os.getenv("CHUNK_SIZE", str(chunk_size)))
         self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", str(chunk_overlap)))
 
@@ -74,6 +78,7 @@ class DocumentProcessor:
                         "source": file_path.name,
                         "path": str(file_path),
                         "chunk": index,
+                        "session": self.session_key,
                     },
                 )
             )
