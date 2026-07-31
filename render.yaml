@@ -42,5 +42,9 @@ services:
         value: vectorstore
       - key: CHROMA_COLLECTION
         value: doc_chatbot
+      - key: CHUNK_SIZE
+        value: "1000"
+      - key: CHUNK_OVERLAP
+        value: "100"
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile

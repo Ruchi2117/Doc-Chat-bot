@@ -6,7 +6,7 @@ import './App.css';
 // API configuration
 const API_CONFIG = {
   baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, ''),
-  timeout: 60000, // 60 second timeout
+  timeout: 180000, // Render free instances can be slow to wake up.
 };
 
 const api = axios.create(API_CONFIG);
@@ -39,6 +39,7 @@ function App() {
   const [useCaching, setUseCaching] = useState(true);
   const [uploadStatus, setUploadStatus] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [sessionId, setSessionId] = useState(getSessionId);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -81,7 +82,7 @@ function App() {
   
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || isUploading || isProcessingUpload) return;
 
     const userMessage = { role: 'user', content: input };
     setMessages(prev => [...prev, userMessage]);
@@ -178,37 +179,74 @@ function App() {
     if (!file) return;
 
     setIsUploading(true);
-    setUploadStatus('');
+    setIsProcessingUpload(false);
+    setUploadStatus('Uploading file...');
 
     const formData = new FormData();
     formData.append('file', file);
     formData.append('session_id', sessionId);
 
     try {
-      await api.post('/upload', formData, {
+      const response = await api.post('/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      setUploadStatus(`Successfully uploaded and processed: ${file.name}`);
+      const jobId = response.data?.job_id;
+      if (!jobId) {
+        throw new Error('Upload started, but no processing job was returned.');
+      }
+
+      setIsUploading(false);
+      setIsProcessingUpload(true);
+      setUploadStatus(`Processing document: ${file.name}`);
+      const completedJob = await waitForUploadJob(jobId);
+
+      setUploadStatus(`Successfully processed: ${file.name}`);
       // Add a system message to show the upload success
       setMessages(prev => [...prev, {
         role: 'system',
-        content: `Document uploaded: ${file.name}. You can now ask questions about this document.`,
+        content: `Document uploaded: ${file.name}. Indexed ${completedJob.chunks || 0} chunks. You can now ask questions about this document.`,
         isSystem: true
       }]);
     } catch (error) {
       console.error('Upload error:', error);
-      setError(error.response?.data?.error || 'Failed to upload file');
+      const uploadError = error.response?.data?.error || error.response?.data?.detail || error.message || 'Failed to upload file';
+      setError(uploadError);
       setUploadStatus('Failed to upload file');
     } finally {
       setIsUploading(false);
+      setIsProcessingUpload(false);
       // Reset the file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  const waitForUploadJob = async (jobId) => {
+    const maxAttempts = 90;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const response = await api.get(`/upload-status/${jobId}`, {
+        timeout: 30000,
+      });
+      const job = response.data;
+
+      if (job.status === 'completed') {
+        return job;
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(job.message || 'Document processing failed');
+      }
+
+      setUploadStatus(`${job.message || 'Processing document'}...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    throw new Error('Document processing is taking longer than expected. Please try a smaller file.');
   };
 
   const handleNewSession = () => {
@@ -218,6 +256,7 @@ function App() {
     setMessages([]);
     setInput('');
     setUploadStatus('');
+    setIsProcessingUpload(false);
     setError(null);
   };
 
@@ -243,10 +282,10 @@ function App() {
           <Button
             variant="contained"
             onClick={() => fileInputRef.current.click()}
-            disabled={isUploading || !isConnected}
+            disabled={isUploading || isProcessingUpload || !isConnected}
             style={{ marginRight: '10px' }}
           >
-            {isUploading ? 'Uploading...' : 'Upload Document'}
+            {isUploading ? 'Uploading...' : isProcessingUpload ? 'Processing...' : 'Upload Document'}
           </Button>
           {uploadStatus && (
             <span className={uploadStatus.includes('Failed') ? 'error-text' : 'success-text'}>
@@ -257,7 +296,7 @@ function App() {
         <Button
           variant="outlined"
           onClick={handleNewSession}
-          disabled={isLoading || isUploading}
+          disabled={isLoading || isUploading || isProcessingUpload}
           style={{ marginRight: '10px' }}
         >
           New Session
@@ -318,9 +357,9 @@ function App() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask me anything about your documents..."
-            disabled={!isConnected || isLoading}
+            disabled={!isConnected || isLoading || isUploading || isProcessingUpload}
           />
-          <button type="submit" disabled={!isConnected || isLoading}>
+          <button type="submit" disabled={!isConnected || isLoading || isUploading || isProcessingUpload}>
             {isLoading ? 'Thinking...' : 'Send'}
           </button>
         </form>

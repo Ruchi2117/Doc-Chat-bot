@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/app/.cache/huggingface \
     TRANSFORMERS_CACHE=/app/.cache/huggingface \
+    XDG_CACHE_HOME=/app/.cache \
     ANONYMIZED_TELEMETRY=False \
     OMP_NUM_THREADS=1
 
@@ -20,6 +21,17 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Download and warm Chroma's lightweight ONNX embedding model at build time
+# so the first user upload does not pay that cold-start cost.
+RUN python - <<'PY'
+import chromadb
+
+client = chromadb.EphemeralClient()
+collection = client.get_or_create_collection("warmup")
+collection.upsert(ids=["warmup"], documents=["warm up embedding model"])
+collection.query(query_texts=["warmup"], n_results=1)
+PY
 
 # Copy the rest of the application
 COPY backend/ .

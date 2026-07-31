@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ import asyncio
 import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
+from uuid import uuid4
 from settings import csv_env, documents_dir_for_session, env_bool, resolve_path
 
 # Setup logging
@@ -56,6 +57,7 @@ class AskRequest(BaseModel):
 # Initialize RAG pipeline placeholder
 rag_pipeline = None
 document_processor = None
+upload_jobs = {}
 
 ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.md', '.docx'}
 
@@ -121,8 +123,56 @@ def build_document_processor(documents_dir: Path, vectorstore_path: Path, sessio
     )
 
 
+def save_upload_to_disk(file: UploadFile, file_path: Path):
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+
+async def process_upload_job(job_id: str, file_path: str, session_id: Optional[str], filename: str):
+    upload_jobs[job_id].update({"status": "processing", "message": "Processing document"})
+    try:
+        documents_dir = resolve_path("DOCUMENTS_DIR", "documents")
+        vectorstore_path = resolve_path("VECTORSTORE_PATH", "vectorstore")
+        processor = build_document_processor(
+            documents_dir=documents_dir,
+            vectorstore_path=vectorstore_path,
+            session_id=session_id,
+        )
+
+        documents = await run_in_threadpool(processor.process_document, Path(file_path))
+        if not documents:
+            upload_jobs[job_id].update({
+                "status": "failed",
+                "message": "No readable text could be extracted from this file",
+            })
+            return
+
+        await run_in_threadpool(processor.update_vectorstore, documents)
+        if rag_pipeline is not None:
+            if RAG_PROFILE == "full":
+                await run_in_threadpool(rag_pipeline.reload_vectorstore)
+            else:
+                await run_in_threadpool(rag_pipeline.reload_vectorstore, session_id)
+
+        upload_jobs[job_id].update({
+            "status": "completed",
+            "message": "File uploaded and processed successfully",
+            "chunks": len(documents),
+        })
+    except Exception as exc:
+        logger.exception("Error processing upload job %s", job_id)
+        upload_jobs[job_id].update({
+            "status": "failed",
+            "message": f"Error processing file: {str(exc)}",
+        })
+
+
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...), session_id: Optional[str] = Form(default=None)):
+async def upload_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form(default=None),
+):
     """Handle document uploads and process them for the RAG pipeline."""
     try:
         filename = Path(file.filename or "").name
@@ -152,28 +202,25 @@ async def upload_file(file: UploadFile = File(...), session_id: Optional[str] = 
         # Save the file
         processor.data_dir.mkdir(parents=True, exist_ok=True)
         file_path = processor.data_dir / filename
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        # Process the new document
-        documents = await run_in_threadpool(processor.process_document, file_path)
-        if not documents:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "No readable text could be extracted from this file"}
-            )
-
-        await run_in_threadpool(processor.update_vectorstore, documents)
-        if rag_pipeline is not None:
-            if RAG_PROFILE == "full":
-                await run_in_threadpool(rag_pipeline.reload_vectorstore)
-            else:
-                await run_in_threadpool(rag_pipeline.reload_vectorstore, session_id)
+        await run_in_threadpool(save_upload_to_disk, file, file_path)
+        job_id = uuid4().hex
+        upload_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "message": "Upload received",
+            "filename": filename,
+            "session_id": session_id,
+            "chunks": 0,
+        }
+        background_tasks.add_task(process_upload_job, job_id, str(file_path), session_id, filename)
 
         return JSONResponse(
+            status_code=202,
             content={
-                "message": "File uploaded and processed successfully",
+                "message": "Upload received. Document processing has started.",
                 "filename": filename,
+                "job_id": job_id,
+                "status": "queued",
                 "session_id": session_id,
             }
         )
@@ -183,6 +230,15 @@ async def upload_file(file: UploadFile = File(...), session_id: Optional[str] = 
             status_code=500,
             content={"error": f"Error processing file: {str(e)}"}
         )
+
+
+@app.get("/upload-status/{job_id}")
+async def upload_status(job_id: str):
+    job = upload_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Upload job not found")
+    return job
+
 
 @app.get("/health")
 async def health_check():

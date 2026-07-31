@@ -44,6 +44,8 @@ The Blueprint sets `RAG_PROFILE=render` for the backend. Keep that value on the 
 
 It also sets `AUTO_PREPARE_DOCUMENTS=false`, so the production demo answers only from documents uploaded in the current browser session. That prevents bundled sample files or previous uploads from being mixed into a fresh demo.
 
+Uploads return quickly and continue indexing in the background. On Render free, large PDFs can still take a bit to extract and embed, so keep resume-demo files small when possible.
+
 Render should create:
 
 - Frontend: `https://ruchi-doc-chatbot.onrender.com`

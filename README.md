@@ -16,6 +16,7 @@ The project includes two backend profiles:
 ### 📚 Effortless Document Uploads
 - Upload `.txt`, `.md`, `.pdf`, and `.docx` files.
 - Automatically extracts, chunks, embeds, and stores document content.
+- Processes uploads in the background so the browser does not sit on a long blocking request.
 - Includes bundled sample documents so the app works immediately after deployment.
 
 ### 💬 Conversational Document Q&A
